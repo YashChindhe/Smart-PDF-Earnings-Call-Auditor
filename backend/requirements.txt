@@ -10,3 +10,4 @@ sse-starlette
 sqlalchemy
 psycopg2-binary
 pydantic
+python-multipart
