@@ -83,8 +83,9 @@ The client app will open at `http://localhost:5173`.
 ### Backend (Railway / Hugging Face Spaces)
 The backend includes a `Dockerfile` that automatically runs on port `7860` or the platform's `$PORT` environment variable.
 1. Connect your Github repository to Railway.
-2. In Railway settings, add environment variables for `OPENROUTER_API_KEY` and your Neon Postgres `DATABASE_URL`.
-3. Railway will build and deploy the container automatically using the `Dockerfile`.
+2. **Configure Service Settings**: In your Railway dashboard service settings, set the **Root Directory** to `/backend`. This ensures Railway executes the build using the `/backend` folder as the context.
+3. In Railway settings, add environment variables for `OPENROUTER_API_KEY`, `LLM_MODEL`, `LLM_API_BASE`, and your Neon Postgres `DATABASE_URL`.
+4. Railway will build and deploy the container automatically using the `Dockerfile`.
 
 ### Frontend (Vercel)
 The frontend is built to run on Vercel out of the box.
@@ -92,3 +93,12 @@ The frontend is built to run on Vercel out of the box.
 2. In Vercel environment configurations, set:
    `VITE_BACKEND_URL = https://your-backend-railway-url.railway.app`
 3. Vercel will compile the Vite build (`npm run build`) and host it statically.
+
+
+## Results
+
+1. For Clean PDFs with correct numbers it works as expected.
+![alt text](results/low_severity.png)
+
+2. For PDFs with no relation between forward and backward numbers it works as expected.
+![alt text](results/high_severity.png)
