@@ -26,8 +26,7 @@ app = FastAPI(title="AI PDF Earnings Call Auditor Backend", version="1.0.0")
 # Setup CORS for Vercel Frontend and Localhost Development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins for simplicity, configure properly for production
-    allow_credentials=True,
+    allow_origins=["*"],  # Allows all origins for simplicity
     allow_methods=["*"],
     allow_headers=["*"],
 )
