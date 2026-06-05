@@ -83,9 +83,8 @@ The client app will open at `http://localhost:5173`.
 ### Backend (Railway / Hugging Face Spaces)
 The backend includes a `Dockerfile` that automatically runs on port `7860` or the platform's `$PORT` environment variable.
 1. Connect your Github repository to Railway.
-2. **Configure Service Settings**: In your Railway dashboard service settings, set the **Root Directory** to `/backend`. This ensures Railway executes the build using the `/backend` folder as the context.
-3. In Railway settings, add environment variables for `OPENROUTER_API_KEY`, `LLM_MODEL`, `LLM_API_BASE`, and your Neon Postgres `DATABASE_URL`.
-4. Railway will build and deploy the container automatically using the `Dockerfile`.
+2. In Railway settings, add environment variables for `OPENROUTER_API_KEY`, `LLM_MODEL`, `LLM_API_BASE`, and your Neon Postgres `DATABASE_URL`.
+3. Railway will automatically detect the root-level `Dockerfile` and build/deploy the container without any manual settings.
 
 ### Frontend (Vercel)
 The frontend is built to run on Vercel out of the box.
