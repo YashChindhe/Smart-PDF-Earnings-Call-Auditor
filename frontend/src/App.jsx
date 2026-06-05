@@ -17,7 +17,7 @@ import {
 
 export default function App() {
   // Config
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860';
+  const backendUrl = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:7860').replace(/\/$/, '');
   
   // State
   const [file, setFile] = useState(null);
