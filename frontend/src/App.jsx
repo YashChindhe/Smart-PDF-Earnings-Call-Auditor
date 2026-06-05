@@ -145,7 +145,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-slate-100 flex flex-col">
       {/* Header */}
-      <header className="border-b border-border bg-card/60 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+      <header className="border-b border-border bg-card/60 backdrop-blur-md px-6 py-4 flex flex-col md:flex-row gap-4 md:gap-0 items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <div className="bg-gradient-to-tr from-accent-purple to-accent-indigo p-2.5 rounded-xl shadow-lg shadow-accent-purple/20">
             <ShieldAlert className="w-6 h-6 text-white" />
@@ -159,7 +159,7 @@ export default function App() {
         </div>
 
         {/* Telemetry/Env Stats */}
-        <div className="flex items-center gap-4 text-xs">
+        <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 md:gap-4 text-xs">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800">
             <Cpu className="w-3.5 h-3.5 text-accent-purple" />
             <span className="text-slate-300">Model: Gemini-2.5 (OpenRouter)</span>
@@ -181,9 +181,9 @@ export default function App() {
       </header>
 
       {/* Main split-screen panel container */}
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex flex-col md:flex-row md:overflow-hidden overflow-y-auto">
         {/* Left Side: Document Panel */}
-        <section className="w-1/2 border-r border-border flex flex-col p-6 overflow-hidden">
+        <section className="w-full md:w-1/2 border-b md:border-b-0 md:border-r border-border flex flex-col p-6">
           <div className="mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-200">
               <FileText className="w-5 h-5 text-accent-indigo" />
@@ -194,7 +194,7 @@ export default function App() {
 
           {/* Upload Button area if no file ID */}
           {!fileId && (
-            <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-2xl p-8 bg-card/20 hover:bg-card/40 hover:border-slate-700 transition duration-300">
+            <div className="flex-1 min-h-[250px] md:min-h-0 flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-2xl p-8 bg-card/20 hover:bg-card/40 hover:border-slate-700 transition duration-300">
               <div className="p-4 bg-slate-900 rounded-full border border-slate-800 mb-4">
                 <UploadCloud className="w-10 h-10 text-slate-400" />
               </div>
@@ -215,7 +215,7 @@ export default function App() {
 
           {/* File Parsed Text Display */}
           {fileId && (
-            <div className="flex-1 flex flex-col overflow-hidden bg-card/30 border border-slate-800 rounded-2xl p-4">
+            <div className="h-[450px] md:h-auto md:flex-1 flex flex-col overflow-hidden bg-card/30 border border-slate-800 rounded-2xl p-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs bg-accent-indigo/20 text-accent-indigo px-2 py-0.5 rounded border border-accent-indigo/30 font-medium">PDF</span>
@@ -250,8 +250,8 @@ export default function App() {
         </section>
 
         {/* Right Side: Audit Terminal & Cards */}
-        <section className="w-1/2 flex flex-col p-6 bg-slate-950/20 overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
+        <section className="w-full md:w-1/2 flex flex-col p-6 bg-slate-950/20 md:overflow-y-auto">
+          <div className="flex items-center flex-wrap sm:flex-nowrap gap-4 justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-200">
                 <Terminal className="w-5 h-5 text-accent-purple" />
@@ -263,7 +263,7 @@ export default function App() {
             <button
               onClick={startAudit}
               disabled={!fileId || isAuditing}
-              className={`flex items-center gap-2 font-medium text-sm px-6 py-2.5 rounded-xl shadow-lg transition duration-300 ${
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 font-medium text-sm px-6 py-2.5 rounded-xl shadow-lg transition duration-300 ${
                 !fileId ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none' :
                 isAuditing ? 'bg-slate-900 text-accent-purple border border-accent-purple/30 animate-pulse cursor-not-allowed shadow-none' :
                 'bg-gradient-to-r from-accent-purple to-accent-indigo text-white hover:brightness-110 shadow-accent-purple/20'
@@ -330,9 +330,9 @@ export default function App() {
                       'border-emerald-500/30 hover:border-emerald-500/50'
                     }`}
                   >
-                    <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-start justify-between gap-4 mb-3">
                       <h4 className="font-semibold text-base text-slate-200 pr-4">{card.title}</h4>
-                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border ${
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border shrink-0 ${
                         isHigh ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
                         isMed ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 
                         'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
