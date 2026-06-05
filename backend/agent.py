@@ -4,7 +4,6 @@ import asyncio
 from typing import List, Dict, Any, TypedDict
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, END
 from sqlalchemy.orm import Session
 from database import AuditRun, AuditCard
@@ -22,14 +21,10 @@ class AgentState(TypedDict):
 
 # Helper to get the ChatOpenAI client configured for LiteLLM Proxy or OpenRouter
 def get_llm():
-    # If the user specified a custom base URL (e.g. OpenRouter or LiteLLM proxy)
-    model_name = os.getenv("LLM_MODEL", "google/gemini-2.5-flash:free")
+    model_name = os.getenv("LLM_MODEL", "openrouter/free")
     api_base = os.getenv("LLM_API_BASE", "https://openrouter.ai/api/v1")
-    
-    # Check keys
     api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY") or "dummy-key"
     
-    # If we are using local LiteLLM proxy running on port 8001
     if os.getenv("USE_LITELLM_PROXY") == "true":
         api_base = "http://127.0.0.1:8001/v1"
         api_key = "local-litellm-key"
@@ -51,23 +46,10 @@ async def guidance_extractor_node(state: AgentState) -> AgentState:
     await state["streaming_callback"]("log", msg)
 
     llm = get_llm()
-    
-    # Split the PDF text to process key sections (focusing on forward-looking terms and numbers)
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=500)
-    chunks = text_splitter.split_text(state["pdf_text"])
-    
-    # We will search the chunks for forward-looking guidance keywords
-    guidance_chunks = []
-    keywords = ["guidance", "outlook", "expect", "forecast", "target", "project", "q3", "q4", "full year", "fy26", "fy27"]
-    for chunk in chunks:
-        if any(kw in chunk.lower() for kw in keywords):
-            guidance_chunks.append(chunk)
-            
-    # Combine up to first few guidance chunks to avoid token limits
-    combined_context = "\n\n".join(guidance_chunks[:5])
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an expert financial analyst. Your task is to extract forward-looking financial metrics (guidance/forecasts) from the provided earnings call transcript context.\n"
+        ("system", "You are an expert financial analyst. Your task is to extract forward-looking financial metrics (guidance, forecasts, outlook targets) from the provided earnings call transcript.\n"
+                   "Only extract actual future expectations (e.g. Q3 revenue targets, FY margin outlooks). Do NOT extract historical metrics.\n"
                    "You must output a JSON list of objects. Each object must contain:\n"
                    "- 'metric': Name of the metric (e.g., 'Q3 Revenue Guidance', 'FY26 Gross Margin Outlook')\n"
                    "- 'value': The stated target value or range (e.g., '$10.2B - $10.5B', '54%')\n"
@@ -79,7 +61,7 @@ async def guidance_extractor_node(state: AgentState) -> AgentState:
 
     formatted_prompt = prompt.format_messages(
         correction=state.get("correction_message", "None"),
-        context=combined_context
+        context=state["pdf_text"]
     )
 
     full_response = ""
@@ -91,7 +73,6 @@ async def guidance_extractor_node(state: AgentState) -> AgentState:
     # Parse JSON list
     extracted_metrics = []
     try:
-        # Extract JSON from markdown code block if present
         cleaned = full_response.strip()
         if "```json" in cleaned:
             cleaned = cleaned.split("```json")[1].split("```")[0].strip()
@@ -102,8 +83,7 @@ async def guidance_extractor_node(state: AgentState) -> AgentState:
             extracted_metrics = [extracted_metrics]
     except Exception as e:
         state["logs"].append(f"Error parsing Guidance Extractor JSON: {e}")
-        # Add basic structured fallback if it failed to output valid JSON
-        extracted_metrics = [{"metric": "Failed to extract", "value": "N/A", "source_context": "Invalid JSON format"}]
+        extracted_metrics = []
 
     state["guidance_metrics"] = extracted_metrics
     msg = f"Extracted {len(extracted_metrics)} guidance metrics."
@@ -118,39 +98,29 @@ async def forensic_auditor_node(state: AgentState) -> AgentState:
     await state["streaming_callback"]("log", msg)
 
     llm = get_llm()
-    
-    # We want to cross-reference with historical figures/tables. Let's find tables and numbers.
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=500)
-    chunks = text_splitter.split_text(state["pdf_text"])
-    
-    # Select chunks containing historical/table terms
-    historical_chunks = []
-    table_keywords = ["historical", "table", "quarterly results", "balance sheet", "net income", "prior quarter", "revenue", "operating expense"]
-    for chunk in chunks:
-        if any(kw in chunk.lower() for kw in table_keywords):
-            historical_chunks.append(chunk)
-
-    combined_historical = "\n\n".join(historical_chunks[:5])
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a Forensic Financial Auditor. Your job is to compare the forward-looking guidance metrics extracted from the call against any historical results, tables, or other conflicting disclosures in the transcript.\n"
-                   "Look for numerical or logical contradictions (e.g., a guidance target that is mathematically impossible based on past quarters, or a direct mismatch in growth rates, margins, or share counts).\n\n"
+        ("system", "You are a Forensic Financial Auditor. Your job is to compare the forward-looking guidance metrics extracted from the call against any historical results, tables, segment targets, or other disclosures in the transcript.\n"
+                   "Analyze the document carefully. Look for direct mathematical, segment, or cost-based contradictions (e.g., segment targets that do not sum to the guided total, margin calculations that do not equal Net Income/Revenue targets, or growth claims that are inconsistent with historical tables).\n\n"
+                   "Verification Protocol:\n"
+                   "1. If all figures, segments, and margins align perfectly, do not create false contradictions. Output an empty list of contradictions and soundness: 'sound'.\n"
+                   "2. Only list actual contradictions. For each contradiction, write a clear proof explanation.\n\n"
                    "You must output a JSON object containing:\n"
                    "- 'contradictions': A list of contradiction objects, each with:\n"
                    "  * 'metric': The guidance metric name.\n"
                    "  * 'guidance_value': Stated guidance value.\n"
-                   "  * 'contradictory_value': The conflicting historical/disclosed figure or table values.\n"
+                   "  * 'contradictory_value': The conflicting segment sum, table value, or operational cost.\n"
                    "  * 'explanation': The mathematical or logical proof of the contradiction.\n"
-                   "  * 'severity': 'High', 'Med', or 'Low' based on material impact.\n"
-                   "- 'soundness': A string value, either 'sound' (if the data is clear and consistent) or 'ambiguous' (if details mismatch, numbers don't add up, or guidance metrics lack sufficient context/tables to verify).\n"
+                   "  * 'severity': 'High' or 'Med'.\n"
+                   "- 'soundness': 'sound' (if the data is clear and consistent) or 'ambiguous' (if details mismatch, numbers don't add up, or guidance metrics lack sufficient context/tables to verify).\n"
                    "- 'correction_message': If 'ambiguous', provide a detailed note explaining what guidance metrics need refinement or what tables Node A should re-examine. If 'sound', write an empty string.\n\n"
                    "Format your response strictly as valid JSON, wrapping it inside a JSON block: ```json ... ```"),
-        ("user", "Extracted Guidance Metrics:\n{metrics}\n\nHistorical & Table Data Context:\n{historical}")
+        ("user", "Extracted Guidance Metrics:\n{metrics}\n\nFull Transcript Data Context:\n{historical}")
     ])
 
     formatted_prompt = prompt.format_messages(
         metrics=json.dumps(state["guidance_metrics"], indent=2),
-        historical=combined_historical
+        historical=state["pdf_text"]
     )
 
     full_response = ""
@@ -174,7 +144,6 @@ async def forensic_auditor_node(state: AgentState) -> AgentState:
     state["contradictions"] = auditor_result.get("contradictions", [])
     state["correction_message"] = auditor_result.get("correction_message", "")
     
-    # If the LLM declared the state ambiguous, we update soundness
     soundness = auditor_result.get("soundness", "sound")
     state["logs"].append(f"Auditor Soundness rating: {soundness}")
     await state["streaming_callback"]("log", f"Forensic audit finished. Soundness: {soundness}")
@@ -187,8 +156,6 @@ async def synthesizer_node(state: AgentState) -> AgentState:
     state["logs"].append(msg)
     await state["streaming_callback"]("log", msg)
 
-    # Synthesize the final list of "Audit Cards"
-    # Even if no contradictions were found, we emit a summary card indicating the transcript passed checks.
     final_cards = []
     if not state["contradictions"]:
         final_cards.append({
@@ -200,13 +167,12 @@ async def synthesizer_node(state: AgentState) -> AgentState:
     else:
         for idx, item in enumerate(state["contradictions"]):
             final_cards.append({
-                "severity": item.get("severity", "Med"),
+                "severity": item.get("severity", "High"),
                 "title": f"Financial Contradiction: {item.get('metric', 'Metric discrepancy')}",
                 "description": f"Stated Guidance: {item.get('guidance_value')}. Conflicting Value: {item.get('contradictory_value')}.",
                 "contradiction_details": item.get("explanation", "Discrepancy detected between guidance and tables.")
             })
 
-    # Return final output as json list of cards
     state["logs"].append(f"Synthesized {len(final_cards)} Audit Cards.")
     await state["streaming_callback"]("card", final_cards)
     await state["streaming_callback"]("log", "Audit execution complete.")
@@ -214,7 +180,6 @@ async def synthesizer_node(state: AgentState) -> AgentState:
 
 # Conditional routing edge
 def audit_routing_edge(state: AgentState):
-    # If the forensic auditor flagged it as ambiguous, and we have attempts remaining, loop back.
     if state["correction_message"] and state["attempts"] < 3:
         return "GuidanceExtractor"
     return "Synthesizer"
@@ -256,7 +221,6 @@ async def run_audit_stream(pdf_text: str, db: Session, audit_run_id: int, stream
     
     graph = build_agent_graph()
     
-    # Run the graph and catch any exceptions
     try:
         final_state = await graph.ainvoke(state)
         
@@ -268,7 +232,6 @@ async def run_audit_stream(pdf_text: str, db: Session, audit_run_id: int, stream
             
             # Save the final cards generated
             if "contradictions" in final_state:
-                # If contradictions list is empty, write the single success card
                 cards_to_save = []
                 if not final_state["contradictions"]:
                     cards_to_save.append(AuditCard(
@@ -282,7 +245,7 @@ async def run_audit_stream(pdf_text: str, db: Session, audit_run_id: int, stream
                     for item in final_state["contradictions"]:
                         cards_to_save.append(AuditCard(
                             audit_id=audit_run_id,
-                            severity=item.get("severity", "Med"),
+                            severity=item.get("severity", "High"),
                             title=f"Financial Contradiction: {item.get('metric', 'Metric discrepancy')}",
                             description=f"Stated Guidance: {item.get('guidance_value')}. Conflicting Value: {item.get('contradictory_value')}.",
                             contradiction_details=item.get("explanation", "")
@@ -297,7 +260,6 @@ async def run_audit_stream(pdf_text: str, db: Session, audit_run_id: int, stream
         if run:
             run.status = "failed"
             db.commit()
-        # Emit a fallback error card
         await stream_callback("card", [{
             "severity": "High",
             "title": "Audit Pipeline Failure",
